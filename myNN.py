@@ -1,5 +1,6 @@
 
 import numpy as np
+from tqdm import tqdm
 
 class ConvolutionalLayer:
     def __init__(self, no_of_filters=1, filter_size=3, stride=1, pad=0, input_shape=None):
@@ -203,8 +204,7 @@ class NN:
         for layer in reversed(self.layers):
             dL_dout = layer.backprop(dL_dout, learn_rate)
 
-    def train(self, x_train, y_train, epochs, learn_rate):    
-        from tqdm import tqdm
+    def train(self, x_train, y_train, epochs, learn_rate):
         y_size = np.max(y_train)+1 # vector size of one-hot encoded y
         
         for epoch in range(epochs):
