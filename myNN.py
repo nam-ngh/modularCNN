@@ -1,5 +1,6 @@
 import numpy as np
 from tqdm import tqdm
+from typing import Literal
 
 class ConvolutionalLayer:
     def __init__(self, no_of_filters=1, filter_size=3, stride=1, pad=0, input_shape=None):
@@ -7,7 +8,7 @@ class ConvolutionalLayer:
         self.filter_size = filter_size
         self.stride = stride
         self.pad = pad
-        self.filters = np.random.randn(no_of_filters, filter_size, filter_size, input_shape[-1]) * np.sqrt(2/np.prod(input_shape)) # initialise the set of filters with he initialization method
+        self.filters = np.random.randn(no_of_filters, filter_size, filter_size, input_shape[-1]) * 0.01 # initialise the set of filters
         self.ftmap_size = int((input_shape[0] - self.filter_size + 2*pad)/self.stride) + 1 # determine the size of output feature map
         self.input = None
 
@@ -107,7 +108,8 @@ class MaxPoolingLayer:
         return dL_din
 
 class ActivationLayer:
-    def __init__(self, fn=None, alpha = 0.0001):
+    fns = Literal['relu','leakyrelu','sigmoid','softmax']
+    def __init__(self, fn:fns='relu', alpha = 0.0001):
         self.function = fn
         self.input = None
         self.output = None
@@ -127,9 +129,6 @@ class ActivationLayer:
         
         if self.function == 'softmax':
             output = np.exp(input_arr)/np.sum(np.exp(input_arr))
-        
-        if self.function == None:
-            output = input_arr
 
         self.output = output # store output to later derive
         return output
@@ -151,10 +150,7 @@ class ActivationLayer:
             output = self.output.reshape(-1,1)
             dout_din = np.diagflat(output) - np.dot(output, output.T) # derivative matrix of softmax function
             dL_din = np.dot(dout_din,dL_dout) # compute input loss deriv. by chain rule
-        
-        if self.function == None:
-            dL_din = dL_dout
-        
+
         return dL_din
      
 class FlattenLayer:
@@ -170,8 +166,9 @@ class FlattenLayer:
         
         
 class DenseLayer: 
-    def __init__(self, units_in, units_out):
-        self.weights = np.random.randn(units_out, units_in) * np.sqrt(2/units_in)
+    def __init__(self, units_in, units_out, init_weights_stdev=0.1):
+        # we can choose what type of init method to use for the layer (kaiming, xavier, or just random) by passing in init_weights_stdev
+        self.weights = np.random.randn(units_out, units_in) * init_weights_stdev
         self.biases = np.zeros(shape=(units_out,1))
 
     def forwardprop(self, input_arr):
