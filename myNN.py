@@ -51,7 +51,7 @@ class ConvolutionalLayer:
             x = i = 0
             while (x + self.filter_size) <= self.input.shape[0]:
                 window = self.input[x:(x+self.filter_size), y:(y+self.filter_size), :]
-                # apply each filter to the defined window
+                # filter gradient = output gradient * input (the window)
                 for f in range(self.no_of_filters):
                     dL_dw[f] += dL_dout[i,j,f] * window # each stride adds a little to the filters gradient
                     dL_din[x:(x+self.filter_size), y:(y+self.filter_size),:] +=  dL_dout[i,j,f] * self.filters[f]
