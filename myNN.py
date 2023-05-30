@@ -70,10 +70,9 @@ class ConvolutionalLayer:
         of shape (5,5,3,16), which is the shape of the filters
         '''
         # initialise the expanded output gradient matrix:
-        m, n, f = dL_dout.shape # i.e. m, n = self.ouput_size, f = self.no_of_filters
-        expanded_dL_dout = np.zeros((m*self.stride - (self.stride - 1),
-                                     n*self.stride - (self.stride - 1),
-                                     f), dtype=dL_dout.dtype)
+        expanded_dL_dout = np.zeros((self.output_size*self.stride - (self.stride - 1),
+                                     self.output_size*self.stride - (self.stride - 1),
+                                     self.no_of_filters), dtype=dL_dout.dtype)
         
         # replace values at stride intervals with dL_dout to complete the expanded matrix:
         expanded_dL_dout[::self.stride,::self.stride,:] = dL_dout
@@ -91,41 +90,16 @@ class ConvolutionalLayer:
         # windowed_input shape: (5,5,34,34,3)
         # transpose to get shape (5,5,3,34,34) then flatten to 2D for matrix multiplication:
         flat_windows = windowed_input.transpose(0,1,4,2,3).reshape(self.filter_volume, x**2)
-        flat_dL_dout = expanded_dL_dout.reshape(x**2,f)
+        flat_dL_dout = expanded_dL_dout.reshape(x**2,self.no_of_filters)
         dL_df = np.dot(flat_windows, flat_dL_dout).reshape(self.filters.shape)
 
         '''
         2. The input gradient matrix can be determined by:
-        - Spacing out dL_dout as previously AND inversing it on the m, n axis
-        - Using this matrix as the filter to perform FULL convolution on self.filters,
-        i.e. convolution on self.filters padded with enough 0s on the first 2 axes
-
-        Using our example this would be: convolving (34,34,16) on (71,71,3,16) to output (38,38,3),
-        which is the shape of self.input
+        FOR TMR: REDO DL_DIN
         '''
-        # inversing and flattening dL_dout:
-        flipped_dL_dout = np.flip(expanded_dL_dout,(0,1)).reshape(-1)
-
-        # next we pad the filters with (x-1) 0s on either side of the first 2 dimensions:
-        padded_filters = np.pad(self.filters, [(x-1,x-1), (x-1,x-1), (0,0), (0,0)], 'constant')
-        # generate a windowed view of padded_filters. Each window being of size x:
-        windowed_filters = np.lib.stride_tricks.as_strided(padded_filters,
-                                                         shape=(self.input.shape[0], self.input.shape[0],
-                                                                x, x, self.channels, f),
-                                                         strides=(padded_filters.strides[0],
-                                                                  padded_filters.strides[1],
-                                                                  padded_filters.strides[0],
-                                                                  padded_filters.strides[1],
-                                                                  padded_filters.strides[2],
-                                                                  padded_filters.strides[3]))
-        # windowed_filters shape: (38,38,34,34,3,16)
-        # transpose to get shape (38,38,3,34,34,16) then flatten to 2D for matrix multiplication:
-        flat_filters = windowed_filters.transpose(0,1,4,2,3,5).reshape((self.input.shape[0]**2)*self.channels,-1)
-        dL_din = np.dot(flat_filters, flipped_dL_dout).reshape(self.input.shape)
-
         # update filters and return dL_din:
         self.filters -= dL_df * learn_rate
-        return dL_din
+        #return dL_din
 
 class MaxPoolingLayer:
     def __init__(self, pool_size=2, stride=2):
@@ -171,8 +145,7 @@ class MaxPoolingLayer:
         return dL_din
 
 class ActivationLayer:
-    fns: Literal['relu','leakyrelu','sigmoid','softmax']
-    def __init__(self, fn: fns='relu', alpha=0.0001):
+    def __init__(self, fn: Literal['relu','leakyrelu','sigmoid','softmax']='relu', alpha=0.0001):
         self.function = fn
         self.input = None
         self.output = None
