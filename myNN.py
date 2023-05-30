@@ -8,60 +8,123 @@ class ConvolutionalLayer:
         self.filter_size = filter_size
         self.stride = stride
         self.pad = pad
-        self.filters = np.random.randn(no_of_filters, filter_size, filter_size, input_shape[-1]) * 0.01 # initialise the set of filters
-        self.ftmap_size = int((input_shape[0] - self.filter_size + 2*pad)/self.stride) + 1 # determine the size of output feature map
+        self.input_shape = input_shape
+        self.channels = input_shape[-1]
+        # initialise the set of filters:
+        self.filters = np.random.randn(filter_size, filter_size, input_shape[-1], no_of_filters) * 0.01
+        self.filter_volume = filter_size*filter_size*input_shape[-1]
+        # determine the size of the output feature map:
+        self.output_size = int((input_shape[0] - filter_size + 2*pad)/stride) + 1
+        # keeping track of each input
         self.input = None
+        '''
+        To follow along the code for this layer, we use an example of:
+        - input_shape = (32,32,3)
+        - no_of_filters = 16,
+        - filter_size = 5,
+        - stride = 3, pad = 3
+        
+        The filters have a shape of (5,5,3,16), i.e. 16 different filters of shape (5,5,3)
+        Each filter_volume is therefore 5*5*3 = 75
 
+        The output_size from this layer should be (32 - 5 + 2*3)/3 + 1 = 12
+        Since there are 16 filters applied, output shape should therefore be (12,12,16)
+
+        '''
+    
     def forwardprop(self, image):
         # pad the 4 edges of the image with the provided number of pixels
         if self.pad > 0:
             image = np.pad(image, [(self.pad,self.pad), (self.pad,self.pad), (0,0)], 'constant')
         
         # store image to later backprop:
-        self.input = image
+        self.input = image # self.input now has shape (38,38,3)
 
-        # initialise output matrix with zeros:
-        output = np.zeros(shape=(self.ftmap_size, self.ftmap_size, self.no_of_filters))
-        
-        # (x,y) = position of the sliding window on the input image and (i,j) = updated element in the output:
-        y = j = 0
-        # slide the window and scan to map the outputs:
-        while (y + self.filter_size) <= image.shape[1]:
-            x = i = 0
-            while (x + self.filter_size) <= image.shape[0]:
-                window = image[x:(x+self.filter_size), y:(y+self.filter_size), :]
-                # apply each filter to the defined window
-                for f in range(self.no_of_filters):
-                    output[i,j,f] = np.sum(self.filters[f]*window)
-                x += self.stride
-                i += 1
-            y += self.stride
-            j += 1
+        # create a windowed view of the image, each window being the size of the filter (5,5,3), there are 12*12 windows in total. 
+        # Each window and filter contribute to one output unit:
+        windowed_image = np.lib.stride_tricks.as_strided(image,
+                                                         shape=(self.output_size,self.output_size,
+                                                                self.filter_size,self.filter_size,
+                                                                self.channels),
+                                                         strides=(image.strides[0]*self.stride,
+                                                                  image.strides[1]*self.stride,
+                                                                  image.strides[0],
+                                                                  image.strides[1],
+                                                                  image.strides[2]))
+        # windowed_image shape: (12,12,5,5,3)
+        # reshape each window into a row and filters into column for vectorized operation:
+        flat_windows = windowed_image.reshape(self.output_size,self.output_size,self.filter_volume).reshape(self.output_size**2,self.filter_volume)
+        flat_filters = self.filters.reshape(self.filter_volume, self.no_of_filters)
+        output = np.dot(flat_windows,flat_filters).reshape(self.output_size,self.output_size,self.no_of_filters)
         return output
     
     def backprop(self, dL_dout, learn_rate):
-        # initialise input gradients:
-        dL_din = np.zeros(shape=(self.input.shape))
-        # initialise filter gradients:
-        dL_dw = np.zeros(shape=self.filters.shape)
+        '''
+        Two main tasks in a convolutional layer back propagation:
+        - Find the filters gradients and adjust the filters accordingly with the learning rate
+        - Find the input gradients to feed back to the previous layers
 
-        #convolve over input to compute gradients:
-        y = j = 0
-        while (y + self.filter_size) <= self.input.shape[1]:
-            x = i = 0
-            while (x + self.filter_size) <= self.input.shape[0]:
-                window = self.input[x:(x+self.filter_size), y:(y+self.filter_size), :]
-                # filter gradient = output gradient * input (the window)
-                for f in range(self.no_of_filters):
-                    dL_dw[f] += dL_dout[i,j,f] * window # each stride adds a little to the filters gradient
-                    dL_din[x:(x+self.filter_size), y:(y+self.filter_size),:] +=  dL_dout[i,j,f] * self.filters[f]
-                x += self.stride
-                i += 1
-            y += self.stride
-            j += 1
+        1. The filter gradient matrix dL_df can be determined by:
+        - Spacing out the dL_dout matrix by the stride value: from shape (12,12,16) to (34,34,16) with 0s in between
+        - Use this matrix as the filter and perform convolution on the input (38,38,3). This operation should output a matrix 
+        of shape (5,5,3,16), which is the shape of the filters
+        '''
+        # initialise the expanded output gradient matrix:
+        m, n, f = dL_dout.shape # i.e. m, n = self.ouput_size, f = self.no_of_filters
+        expanded_dL_dout = np.zeros((m*self.stride - (self.stride - 1),
+                                     n*self.stride - (self.stride - 1),
+                                     f), dtype=dL_dout.dtype)
         
-        #update filters:
-        self.filters -= dL_dw * learn_rate
+        # replace values at stride intervals with dL_dout to complete the expanded matrix:
+        expanded_dL_dout[::self.stride,::self.stride,:] = dL_dout
+        # let:
+        x = expanded_dL_dout.shape[0]
+
+        # we now need to generate a windowed view of the input. Each window should be the 2D size of expanded_dL_dout (x,x):
+        windowed_input = np.lib.stride_tricks.as_strided(self.input,
+                                                         shape=(self.filter_size, self.filter_size, x, x, self.channels),
+                                                         strides=(self.input.strides[0],
+                                                                  self.input.strides[1],
+                                                                  self.input.strides[0],
+                                                                  self.input.strides[1],
+                                                                  self.input.strides[2]))
+        # windowed_input shape: (5,5,34,34,3)
+        # transpose to get shape (5,5,3,34,34) then flatten to 2D for matrix multiplication:
+        flat_windows = windowed_input.transpose(0,1,4,2,3).reshape(self.filter_volume, x**2)
+        flat_dL_dout = expanded_dL_dout.reshape(x**2,f)
+        dL_df = np.dot(flat_windows, flat_dL_dout).reshape(self.filters.shape)
+
+        '''
+        2. The input gradient matrix can be determined by:
+        - Spacing out dL_dout as previously AND inversing it on the m, n axis
+        - Using this matrix as the filter to perform FULL convolution on self.filters,
+        i.e. convolution on self.filters padded with enough 0s on the first 2 axes
+
+        Using our example this would be: convolving (34,34,16) on (71,71,3,16) to output (38,38,3),
+        which is the shape of self.input
+        '''
+        # inversing and flattening dL_dout:
+        flipped_dL_dout = np.flip(expanded_dL_dout,(0,1)).reshape(-1)
+
+        # next we pad the filters with (x-1) 0s on either side of the first 2 dimensions:
+        padded_filters = np.pad(self.filters, [(x-1,x-1), (x-1,x-1), (0,0), (0,0)], 'constant')
+        # generate a windowed view of padded_filters. Each window being of size x:
+        windowed_filters = np.lib.stride_tricks.as_strided(padded_filters,
+                                                         shape=(self.input.shape[0], self.input.shape[0],
+                                                                x, x, self.channels, f),
+                                                         strides=(padded_filters.strides[0],
+                                                                  padded_filters.strides[1],
+                                                                  padded_filters.strides[0],
+                                                                  padded_filters.strides[1],
+                                                                  padded_filters.strides[2],
+                                                                  padded_filters.strides[3]))
+        # windowed_filters shape: (38,38,34,34,3,16)
+        # transpose to get shape (38,38,3,34,34,16) then flatten to 2D for matrix multiplication:
+        flat_filters = windowed_filters.transpose(0,1,4,2,3,5).reshape((self.input.shape[0]**2)*self.channels,-1)
+        dL_din = np.dot(flat_filters, flipped_dL_dout).reshape(self.input.shape)
+
+        # update filters and return dL_din:
+        self.filters -= dL_df * learn_rate
         return dL_din
 
 class MaxPoolingLayer:
@@ -108,8 +171,8 @@ class MaxPoolingLayer:
         return dL_din
 
 class ActivationLayer:
-    fns = Literal['relu','leakyrelu','sigmoid','softmax']
-    def __init__(self, fn:fns='relu', alpha = 0.0001):
+    fns: Literal['relu','leakyrelu','sigmoid','softmax']
+    def __init__(self, fn: fns='relu', alpha=0.0001):
         self.function = fn
         self.input = None
         self.output = None
@@ -207,7 +270,7 @@ class NN:
             loss_sum = 0
             correct_pred = 0
             for i in tqdm(range(y_train.shape[0]), ncols = 80):
-                x = x_train[i]
+                x = np.array(x_train[i], order='C') # making sure data is stored in row major order for ConvolutionalLayer to work
                 y = y_train[i]
                 # one hot encode y: 
                 y_1hot = np.zeros(shape=(y_size,1))
