@@ -94,12 +94,36 @@ class ConvolutionalLayer:
         dL_df = np.dot(flat_windows, flat_dL_dout).reshape(self.filters.shape)
 
         '''
-        2. The input gradient matrix can be determined by:
-        FOR TMR: REDO DL_DIN
+        2. The input gradient matrix can be mapped by performing FULL convolution on expanded_dL_dout, 
+        using a flipped self.filters as filters
         '''
-        # update filters and return dL_din:
+        # flipping the filter on the first 2 dimensions:
+        flipped_filters = np.flip(self.filters, (0,1))
+
+        # pad expanded_dL_dout with enough 0s on the first 2 dimensions:
+        padded_dL_dout = np.pad(expanded_dL_dout, [(self.filter_size-1,self.filter_size-1),
+                                                   (self.filter_size-1,self.filter_size-1),
+                                                   (0,0)], 'constant')
+        # generate a windowed view, each window the size of the filters, with the total number of windows same as input size:
+        windowed_dL_dout = np.lib.stride_tricks.as_strided(padded_dL_dout,
+                                                         shape=(self.input.shape[0], self.input.shape[0],
+                                                                self.filter_size, self.filter_size,
+                                                                self.no_of_filters),
+                                                         strides=(padded_dL_dout.strides[0],
+                                                                  padded_dL_dout.strides[1],
+                                                                  padded_dL_dout.strides[0],
+                                                                  padded_dL_dout.strides[1],
+                                                                  padded_dL_dout.strides[2]))
+        
+        # windowed_dL_dout shape: (38,38,5,5,16), flattened to (1444,400)
+        # flipped_filters shape (5,5,3,16), transposed to (5,5,16,3) and flattened to (400, 3): 
+        flat_dL_dout_windows = windowed_dL_dout.reshape(self.input.shape[0]**2, (self.filter_size**2)*self.no_of_filters)
+        flat_filters = flipped_filters.transpose(0,1,3,2).reshape((self.filter_size**2)*self.no_of_filters,self.channels)
+        dL_din = np.dot(flat_dL_dout_windows,flat_filters).reshape(self.input.shape)
+
+        # finally, we update the filters and return dL_din:
         self.filters -= dL_df * learn_rate
-        #return dL_din
+        return dL_din
 
 class MaxPoolingLayer:
     def __init__(self, pool_size=2, stride=2):
