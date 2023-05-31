@@ -3,13 +3,14 @@ from tqdm import tqdm
 from typing import Literal
 
 class ConvolutionalLayer:
-    def __init__(self, no_of_filters=1, filter_size=3, stride=1, pad=0, input_shape=None):
+    def __init__(self, input_shape=None, no_of_filters=1, filter_size=3, stride=1, pad=0, pad_value=0):
+        self.input_shape = input_shape
+        self.channels = input_shape[2]
         self.no_of_filters = no_of_filters
         self.filter_size = filter_size
         self.stride = stride
         self.pad = pad
-        self.input_shape = input_shape
-        self.channels = input_shape[-1]
+        self.pad_value = pad_value
         # initialise the set of filters:
         self.filters = np.random.randn(filter_size, filter_size, input_shape[-1], no_of_filters) * 0.01
         self.filter_volume = filter_size*filter_size*input_shape[-1]
@@ -35,7 +36,8 @@ class ConvolutionalLayer:
     def forwardprop(self, image):
         # pad the 4 edges of the image with the provided number of pixels
         if self.pad > 0:
-            image = np.pad(image, [(self.pad,self.pad), (self.pad,self.pad), (0,0)], 'constant')
+            image = np.pad(image, [(self.pad,self.pad), (self.pad,self.pad), (0,0)], 
+                           'constant', constant_values=self.pad_value)
         
         # store image to later backprop:
         self.input = image # self.input now has shape (38,38,3)
@@ -126,10 +128,38 @@ class ConvolutionalLayer:
         return dL_din
 
 class MaxPoolingLayer:
-    def __init__(self, pool_size=2, stride=2):
+    def __init__(self, input_shape=None, pool_size=2, stride=2):
+        self.input_shape = input_shape
         self.pool_size = pool_size
         self.stride = stride
+        # compute output size:
+        self.output_size = int((input_shape[0] - pool_size)/stride) + 1
+        self.channels = input_shape[2]
         self.input = None
+        '''
+        Following the example from the previous layer:
+        - input_shape = (12,12,16) i.e. ConvolutionalLayer output shape
+        - output_size = (12-2)/2 + 1 = 6
+        - channels = 16
+        Output of this layer hence has shape (6,6,16)
+        '''
+    def forwardprop(self, sample):
+        # forming a windowed view of the input:
+        self.input = sample 
+        windowed_sample = np.lib.stride_tricks.as_strided(sample,
+                                                          shape=(self.output_size, self.output_size,
+                                                                 self.pool_size, self.pool_size,
+                                                                 self.channels),
+                                                          strides=(sample.strides[0]*self.stride,
+                                                                   sample.strides[1]*self.stride,
+                                                                   sample.strides[0],
+                                                                   sample.strides[1],
+                                                                   sample.strides[2]))
+        # windowed_sample shape: (6,6,2,2,16)
+        return np.amax(windowed_sample, axis=(2,3)) # returns the max value from each 2x2 window (axes 2 and 3)
+    
+    def backprop(self, dL_dout, learn_rate):
+        pass
     
     def forwardprop(self, sample):
         self.input = sample 
