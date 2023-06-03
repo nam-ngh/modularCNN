@@ -1,9 +1,18 @@
+# main import:
 import numpy as np
-from tqdm import tqdm
-from typing import Literal
 
+# extra imports:
+# to measure training progress:
+from tqdm import tqdm
+# to show available options for method argument:
+from typing import Literal
+# to pretty-print tables:
+from tabulate import tabulate
+
+# layers:
 class ConvolutionalLayer:
     def __init__(self, input_shape=None, no_of_filters=1, filter_size=3, stride=1, pad=0, pad_value=0):
+        self.name = 'Convolutional'
         self.input_shape = input_shape
         self.channels = input_shape[2]
         self.no_of_filters = no_of_filters
@@ -42,8 +51,8 @@ class ConvolutionalLayer:
         # store image to later backprop:
         self.input = image # self.input now has shape (38,38,3)
 
-        # create a windowed view of the image, each window being the size of the filter (5,5,3), there are 12*12 windows in total. 
-        # Each window and filter contribute to one output unit:
+        # create a windowed view of the image (i.e. convolution operation), each window being the shape of the filter (5,5,3).
+        # there are 12*12 windows in total, each window and filter contribute to one output unit:
         windowed_image = np.lib.stride_tricks.as_strided(image,
                                                          shape=(self.output_size,self.output_size,
                                                                 self.filter_size,self.filter_size,
@@ -55,9 +64,15 @@ class ConvolutionalLayer:
                                                                   image.strides[2]))
         # windowed_image shape: (12,12,5,5,3)
         # reshape each window into a row and filters into column for vectorized operation:
-        flat_windows = windowed_image.reshape(self.output_size,self.output_size,self.filter_volume).reshape(self.output_size**2,self.filter_volume)
+        flat_windows = windowed_image.reshape(self.output_size,
+                                              self.output_size,
+                                              self.filter_volume).reshape(self.output_size**2,
+                                                                          self.filter_volume)
+        
         flat_filters = self.filters.reshape(self.filter_volume, self.no_of_filters)
-        output = np.dot(flat_windows,flat_filters).reshape(self.output_size,self.output_size,self.no_of_filters)
+        output = np.dot(flat_windows,flat_filters).reshape(self.output_size,
+                                                           self.output_size,
+                                                           self.no_of_filters)
         return output
     
     def backprop(self, dL_dout, learn_rate):
@@ -128,24 +143,25 @@ class ConvolutionalLayer:
         return dL_din
 
 class MaxPoolingLayer:
-    def __init__(self, input_shape=None, pool_size=2, stride=2):
+    def __init__(self, input_shape=None, pool_size=2):
+        self.name = 'MaxPooling'
         self.input_shape = input_shape
         self.pool_size = pool_size
-        self.stride = stride
+        self.stride = pool_size
         # compute output size:
-        self.output_size = int((input_shape[0] - pool_size)/stride) + 1
+        self.output_size = int((input_shape[0] - pool_size)/pool_size) + 1
         self.channels = input_shape[2]
-        self.input = None
+        self.pools = None
         '''
         Following the example from the previous layer:
         - input_shape = (12,12,16) i.e. ConvolutionalLayer output shape
+        - Each pooling region is a 2x2 window, stride = 2
         - output_size = (12-2)/2 + 1 = 6
         - channels = 16
         Output of this layer hence has shape (6,6,16)
         '''
     def forwardprop(self, sample):
         # forming a windowed view of the input:
-        self.input = sample 
         windowed_sample = np.lib.stride_tricks.as_strided(sample,
                                                           shape=(self.output_size, self.output_size,
                                                                  self.pool_size, self.pool_size,
@@ -155,57 +171,54 @@ class MaxPoolingLayer:
                                                                    sample.strides[0],
                                                                    sample.strides[1],
                                                                    sample.strides[2]))
-        # windowed_sample shape: (6,6,2,2,16)
-        return np.amax(windowed_sample, axis=(2,3)) # returns the max value from each 2x2 window (axes 2 and 3)
+        # windowed_sample shape: (6,6,2,2,16), store to later use in backprop:
+        self.pools = windowed_sample
+        # return the one max value from each 2x2 window (axes 2 and 3) --> shape (6,6,16):
+        return np.amax(windowed_sample, axis=(2,3))
     
     def backprop(self, dL_dout, learn_rate):
-        pass
-    
-    def forwardprop(self, sample):
-        self.input = sample 
-        ftmap_size = int((sample.shape[0] - self.pool_size)/self.stride) + 1
-        output = np.zeros(shape=(ftmap_size, ftmap_size, sample.shape[-1]))
+        '''
+        This layer's backprop function takes the loss gradient from the previous layer and assign it to the position
+        of the max value in each window defined in forwardprop. Gradients of non-max values are 0.
+        '''
+        # transform the input windowed view into a 2D array with 6x6x16 rows and 2x2 columns with the following steps:
+        # - flatten each window, so shape (6,6,2,2,16) become (6,6,4,16)
+        # - tranpose the last 2 axes so shape become (6,6,16,4)
+        # - flatten from (6,6,16,4) to (576,4)
+        # we now have a matrix where each row is a pooling window:
+        flat_windows = self.pools.reshape(self.output_size,
+                                          self.output_size,
+                                          self.pool_size**2,
+                                          self.channels).transpose(0,1,3,2).reshape(-1,self.pool_size**2)
+        
+        # next, we initialise dL_din and broadcast dL_dout to the argmax of each row in flat_windows:
+        flat_dL_din = np.zeros(shape=(flat_windows.shape))
+        flat_dL_din[range(flat_windows.shape[0]),np.argmax(flat_windows, axis = 1)] = dL_dout.reshape(-1)
 
-        # slide the window and scan to map the outputs:
-        y = j = 0
-        while (y + self.pool_size) <= sample.shape[1]:
-            x = i = 0
-            while (x + self.pool_size) <= sample.shape[0]:
-                # pool each channel:
-                for c in range(sample.shape[-1]):
-                    window = sample[x:(x+self.pool_size), y:(y+self.pool_size), c]
-                    output[i,j,c] = np.max(window)
-                x += self.stride
-                i += 1
-            y += self.stride
-            j += 1
-        return output
-    
-    def backprop(self, dL_dout, learn_rate):
-        dL_din = np.zeros(shape=self.input.shape) # initialise derivatives matrix
-
-        y = j = 0
-        while (y + self.pool_size) <= dL_din.shape[1]:
-            x = i = 0
-            while (x + self.pool_size) <= dL_din.shape[0]:
-                for c in range(dL_din.shape[-1]):
-                    window = self.input[x:(x+self.pool_size), y:(y+self.pool_size), c]
-                    x_idx, y_idx = np.where(window == np.max(window)) # get the index of max value inside input window
-                    dL_din[(x+x_idx), (y+y_idx), c] = dL_dout[i,j,c]
-                x += self.stride
-                i += 1
-            y += self.stride
-            j += 1
-        return dL_din
+        # now we need to reverse transform flat_dL_din into self.pools.shape by reversing the 3 steps above:
+        windowed_dL_din = flat_dL_din.reshape(self.output_size,
+                                              self.output_size,
+                                              self.channels,
+                                              self.pool_size**2).transpose(0,1,3,2).reshape(self.pools.shape)
+        
+        # now windowed_dL_din needs to be transformed to the original sample shape. This is where it gets more complicated without 
+        # for loops if the pooling windows overlap, since the overlaps have to be added together to make dL_din.
+        # without this, we only need to transpose and reshape:
+        return windowed_dL_din.transpose(0,2,1,3,4).reshape(self.input_shape)
 
 class ActivationLayer:
-    def __init__(self, fn: Literal['relu','leakyrelu','sigmoid','softmax']='relu', alpha=0.0001):
+    def __init__(self, fn: Literal['relu','leakyrelu','sigmoid','softmax']='relu', alpha=0.001):
         self.function = fn
         self.input = None
         self.output = None
         self.alpha = alpha # for leaky relu only
-
+        self.name = str(fn) + ' activation'
+        '''
+        For this layer, input and output shape are the same, which can be any shape for most fn, except for softmax.
+        For softmax, input and output shape would be (n,1), where for the cifar-10 dataset n=10
+        '''
     def forwardprop(self, input_arr):
+        # store input to later derive:
         self.input = input_arr
 
         if self.function == 'relu':
@@ -219,17 +232,19 @@ class ActivationLayer:
         
         if self.function == 'softmax':
             output = np.exp(input_arr)/np.sum(np.exp(input_arr))
-
-        self.output = output # store output to later derive
+        
+        # store output to later derive:
+        self.output = output
         return output
     
     def backprop(self, dL_dout, learn_rate):
         if self.function == 'relu':
-            dout_din = np.int_(self.input > 0) # relu derivative
+            dout_din = (self.input > 0).astype(self.input.dtype) # relu derivative
             dL_din = dL_dout * dout_din
 
         if self.function == 'leakyrelu':
-            dout_din = np.divide(self.output, self.input, out=np.zeros_like(self.output), where=self.input!=0) # avoid divide by 0
+            dout_din = (self.input > 0).astype(self.input.dtype)
+            dout_din[dout_din == 0] = self.alpha # replace all 0s with alpha
             dL_din = dL_dout * dout_din
 
         if self.function == 'sigmoid':
@@ -238,7 +253,7 @@ class ActivationLayer:
 
         if self.function == 'softmax':
             output = self.output.reshape(-1,1)
-            dout_din = np.diagflat(output) - np.dot(output, output.T) # derivative matrix of softmax function
+            dout_din = np.diagflat(output) - np.dot(output, output.transpose()) # derivative matrix of softmax function
             dL_din = np.dot(dout_din,dL_dout) # compute input loss deriv. by chain rule
 
         return dL_din
@@ -246,9 +261,11 @@ class ActivationLayer:
 class FlattenLayer:
     def __init__(self):
         self.input_shape = None
+        self.name = 'Flatten'
     
     def forwardprop(self, input_arr):
         self.input_shape = input_arr.shape
+        # flatten to rows:
         return input_arr.reshape(-1,1)
     
     def backprop(self, dL_dout, learn_rate):
@@ -256,24 +273,36 @@ class FlattenLayer:
         
         
 class DenseLayer: 
-    def __init__(self, units_in, units_out, init_weights_stdev=0.1):
-        # we can choose what type of init method to use for the layer (kaiming, xavier, or just random) by passing in init_weights_stdev
-        self.weights = np.random.randn(units_out, units_in) * init_weights_stdev
+    def __init__(self, units_in, units_out, initial_Wvar=0.1):
+        self.name = 'Dense'
+        # by passing in initial_Wvar, it is possible to choose the weights initialisation strategy: kaiming, xavier, random, etc.
+        self.weights = np.random.randn(units_out, units_in) * np.sqrt(initial_Wvar)
         self.biases = np.zeros(shape=(units_out,1))
-
+        self.units_in = units_in
+        self.units_out = units_out
+        self.input = None
+    '''
+    Dense a.k.a fully-connected layer:
+    - units_in and units_out are the number of input and output neurons for the layer, respectively
+    - e.g.: units_in=100 and units_out=10, weights will have shape (10,100) and biases (10,1)
+    - initial_Wvar specifies the variance for the initial weights distribution. Initializing each layer's weights appropriately could 
+    help the network be more stable and converge faster.
+    '''
     def forwardprop(self, input_arr):
-        self.input = input_arr # store input for later use in backprop
+        # store input to later backprop:
+        self.input = input_arr
         return np.dot(self.weights, input_arr) + self.biases
     
     def backprop(self, dL_dout, learn_rate):
-        dL_dw = np.dot(dL_dout, self.input.T) # weight loss
+        dL_dw = np.dot(dL_dout, self.input.transpose()) # weight loss
+        dL_din = np.dot(self.weights.transpose(), dL_dout) # input loss
 
-        # update parameters:
+        # update parameters and return input loss gradients:
         self.weights -= dL_dw * learn_rate
         self.biases -= dL_dout * learn_rate # bias loss gradient = dL_dout
+        return dL_din
 
-        return np.dot(self.weights.T, dL_dout) # return derivative of loss wrt input, i.e. dL_din
-    
+# network:    
 class NN:
     def __init__(self):
         self.layers = []
@@ -289,7 +318,43 @@ class NN:
     def backpass(self, dL_dout, learn_rate):
         for layer in reversed(self.layers):
             dL_dout = layer.backprop(dL_dout, learn_rate)
-
+    
+    def summary(self):
+        table = [['Layer','Input Shape','Output Shape','Trainable Parameters']]
+        previous_output = None
+        for layer in (self.layers):
+            lst = []
+            lst.append(layer.name)
+            if layer.name == 'Convolutional': 
+                lst.append(layer.input_shape)
+                output_shape = tuple(layer.output_size, layer.output_size, layer.no_of_filters)
+                lst.append(output_shape)
+                lst.append(layer.filter_volume*layer.no_of_filter)
+            if layer.name == 'MaxPooling':
+                lst.append(layer.input_shape)
+                output_shape = tuple(layer.output_size, layer.output_size, layer.channels)
+                lst.append(output_shape)
+                lst.append(0)
+            if 'activation' in layer.name:
+                lst.append('_')
+                output_shape = previous_output
+                lst.append('_')
+                lst.append(0)
+            if layer.name == 'Flatten':
+                lst.append(previous_output)
+                output_shape = np.product(previous_output)
+                lst.append(output_shape)
+                lst.append(0)
+            if layer.name == 'Dense':
+                lst.append(tuple(layer.units_in,1))
+                output_shape = tuple(layer.units_out,1)
+                lst.append(output_shape)
+                lst.append(layer.units_in*layer.units_out + layer.units_out)
+            # save layer output shape for next layer's access:
+            previous_output = output_shape
+            table.append(lst)
+        print(tabulate(table, headers='firstrow', tablefmt='fancy_grid'))
+  
     def train(self, x_train, y_train, epochs, learn_rate):
         y_size = np.max(y_train)+1 # vector size of one-hot encoded y
         
