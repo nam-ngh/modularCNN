@@ -322,7 +322,6 @@ class DenseLayer:
 class NN:
     def __init__(self):
         self.layers = []
-        self.previous_output_shape = None
 
     def add(self, layer):
         self.layers.append(layer)
@@ -352,31 +351,63 @@ class NN:
         table.append(['TOTAL','','',total_params])
         print(tabulate(table, headers='firstrow', tablefmt='fancy_grid'))
 
-    def train(self, x_train, y_train, epochs, learn_rate):
-        y_size = np.max(y_train)+1 # vector size of one-hot encoded y
+    def train(self, x_train, y_train, epochs=50, learn_rate=0.0001, val_size=0.1):
+        # checks:
+        assert (x_train.shape[0] == y_train.shape[0]), \
+            f"Missing or incorrectly formatted data - got {x_train.shape[0]} inputs and {y_train.shape[0]} labels"
+        assert (val_size >= 0 and val_size <= 1), f"Expected val_size value between 0 and 1, got: {val_size}"
         
+        # define train and validation split:
+        data_size = y_train.shape[0]
+        train_size = int(data_size*(1-val_size))
+
+        # next, we one-hot encode y_train:
+        outcomes = np.max(y_train)+1 # number of image categories 
+        onehot_ytr = np.zeros(shape=(data_size,outcomes)) # initialise output matrix
+        onehot_ytr[range(data_size),y_train] = 1 # set the yth value of each row from 0 to 1
+
         for epoch in range(epochs):
-            loss_sum = 0
-            correct_pred = 0
-            for i in tqdm(range(y_train.shape[0]), ncols = 80):
-                x = np.array(x_train[i], order='C') # making sure data is stored in row major order for ConvolutionalLayer to work
-                y = y_train[i]
-                # one hot encode y: 
-                y_1hot = np.zeros(shape=(y_size,1))
-                y_1hot[y] = 1
+            trn_loss_sum = 0
+            trn_correct_preds = 0
+            # train the network on train data:
+            for i in tqdm(range(train_size), ncols = 80):
+                x = np.array(x_train[i], order='C') # making sure data is stored in row major order for convolution to work
+                y = onehot_ytr[i]
                 
                 # pass the image through the network to obtain the probabilities array of the image belonging in each class:
-                p = self.forwardpass(x) # (1x10) shape
+                p = self.forwardpass(x) # shape (10,1)
                 
                 # keep track of correct predictions:
-                if np.argmax(p) == y:
-                    correct_pred += 1
+                if np.argmax(p, axis=0) == np.argmax(y, axis=0):
+                    trn_correct_preds += 1
 
                 # compute cross-entropy loss:
-                loss_sum += -np.log(p[y,0]) # -log of probability for the correct class
-                gradient = np.divide(-y_1hot,p) #derivative of cross-entropy loss function - dL_dout, (1x10) shape
+                trn_loss_sum += -np.log(p[y==1][0]) # -log of probability for the correct class
+                gradient = np.divide(-y,p) #derivative of cross-entropy loss function - dL_dout, (1x10) shape
 
                 # pass the gradient back through the network to adjust weights and biases:
                 self.backpass(gradient, learn_rate)
+            
+            # assess validation performance:
+            if val_size > 0:
+                print('Validating...\r',end='')
+                val_correct_preds = 0
+                val_loss_sum = 0
+                for i in range(train_size,data_size):
+                    # same as training but no backpass, i.e. no learning
+                    x = np.array(x_train[i], order='C')
+                    y = onehot_ytr[i]
+                    p = self.forwardpass(x)
+
+                    if np.argmax(p, axis=0) == np.argmax(y, axis=0):
+                        val_correct_preds += 1
+                    val_loss_sum += -np.log(p[y==1][0])
+
+                print(f'Epoch: {epoch},'
+                      f'train_loss: {trn_loss_sum/train_size},'
+                      f'train_acc.: {trn_correct_preds*100/train_size}%'
+                      f'val_loss: {val_loss_sum/(data_size-train_size)}'
+                      f'val_acc.: {val_correct_preds*100/(data_size-train_size)}', end='\n')
                 
-            print(f'Epoch: {epoch}, Loss: {loss_sum/y_train.shape[0]}, Accuracy: {correct_pred*100/y_train.shape[0]}%')
+            elif val_size == 0: 
+                print(f'Epoch: {epoch}, Loss: {trn_loss_sum/train_size}, Accuracy: {trn_correct_preds*100/train_size}%')
