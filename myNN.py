@@ -138,7 +138,7 @@ class ConvolutionalLayer:
         # flipped_filters shape (5,5,3,16), transposed to (5,5,16,3) and flattened to (400, 3): 
         flat_dL_dout_windows = windowed_dL_dout.reshape(self.input.shape[0]**2, (self.filter_size**2)*self.filters)
         flat_filters = flipped_filters.transpose(0,1,3,2).reshape((self.filter_size**2)*self.filters,self.channels)
-        dL_din = np.dot(flat_dL_dout_windows,flat_filters).reshape(self.input.shape)
+        dL_din = np.dot(flat_dL_dout_windows,flat_filters).reshape(self.input.shape)[self.pad:-self.pad, self.pad:-self.pad, :]
 
         # finally, we update the filters and return dL_din:
         self.f -= dL_df * learn_rate
@@ -285,7 +285,7 @@ class FlattenLayer:
         return dL_dout.reshape(self.input_shape)
         
 class DenseLayer: 
-    def __init__(self, units_in, units_out, initial_Wvar=0.1):
+    def __init__(self, units_in, units_out, initial_Wvar=0.01):
         # specific layer attributes:
         self.weights = np.random.randn(units_out, units_in) * np.sqrt(initial_Wvar)
         self.biases = np.zeros(shape=(units_out,1))
@@ -358,8 +358,8 @@ class NN:
         assert (val_size >= 0 and val_size <= 1), f"Expected val_size value between 0 and 1, got: {val_size}"
         
         # define train and validation split:
-        data_size = y_train.shape[0]
-        train_size = int(data_size*(1-val_size))
+        data_size = int(y_train.shape[0])
+        trn_size = int(data_size*(1-val_size))
 
         # next, we one-hot encode y_train:
         outcomes = np.max(y_train)+1 # number of image categories 
@@ -370,44 +370,44 @@ class NN:
             trn_loss_sum = 0
             trn_correct_preds = 0
             # train the network on train data:
-            for i in tqdm(range(train_size), ncols = 80):
+            for i in tqdm(range(trn_size), ncols = 100):
                 x = np.array(x_train[i], order='C') # making sure data is stored in row major order for convolution to work
-                y = onehot_ytr[i]
+                y = onehot_ytr[i].reshape(10,1)
                 
                 # pass the image through the network to obtain the probabilities array of the image belonging in each class:
                 p = self.forwardpass(x) # shape (10,1)
                 
                 # keep track of correct predictions:
-                if np.argmax(p, axis=0) == np.argmax(y, axis=0):
+                if np.argmax(p) == np.argmax(y):
                     trn_correct_preds += 1
 
                 # compute cross-entropy loss:
                 trn_loss_sum += -np.log(p[y==1][0]) # -log of probability for the correct class
-                gradient = np.divide(-y,p) #derivative of cross-entropy loss function - dL_dout, (1x10) shape
+                gradient = np.divide(-y,p) #derivative of cross-entropy loss function: dL_dout, shape (10,1)
 
                 # pass the gradient back through the network to adjust weights and biases:
                 self.backpass(gradient, learn_rate)
             
             # assess validation performance:
             if val_size > 0:
-                print('Validating...\r',end='')
+                print('Validating ...\r',end='')
                 val_correct_preds = 0
                 val_loss_sum = 0
-                for i in range(train_size,data_size):
+                for i in range(trn_size,data_size):
                     # same as training but no backpass, i.e. no learning
                     x = np.array(x_train[i], order='C')
-                    y = onehot_ytr[i]
+                    y = onehot_ytr[i].reshape(10,1)
                     p = self.forwardpass(x)
 
-                    if np.argmax(p, axis=0) == np.argmax(y, axis=0):
+                    if np.argmax(p) == np.argmax(y):
                         val_correct_preds += 1
                     val_loss_sum += -np.log(p[y==1][0])
 
-                print(f'Epoch: {epoch},'
-                      f'train_loss: {trn_loss_sum/train_size},'
-                      f'train_acc.: {trn_correct_preds*100/train_size}%'
-                      f'val_loss: {val_loss_sum/(data_size-train_size)}'
-                      f'val_acc.: {val_correct_preds*100/(data_size-train_size)}', end='\n')
+                print(f'Epoch: {epoch}, '
+                      f'train_loss: {round((trn_loss_sum/trn_size), 8)}, '
+                      f'train_acc.: {round((trn_correct_preds*100/trn_size), 5)}%, '
+                      f'val_loss: {round((val_loss_sum/(data_size-trn_size)), 8)}, '
+                      f'val_acc.: {round((val_correct_preds*100/(data_size-trn_size)), 5)}%', end='\n')
                 
             elif val_size == 0: 
-                print(f'Epoch: {epoch}, Loss: {trn_loss_sum/train_size}, Accuracy: {trn_correct_preds*100/train_size}%')
+                print(f'Epoch: {epoch}, Loss: {round((trn_loss_sum/trn_size), 8)}, Accuracy: {round((trn_correct_preds*100/trn_size), 5)}%')
