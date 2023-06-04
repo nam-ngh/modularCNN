@@ -43,9 +43,7 @@ class ConvolutionalLayer:
 
         The output_size from this layer should be (32 - 5 + 2*3)/3 + 1 = 12
         Since there are 16 filters applied, output shape should therefore be (12,12,16)
-
         '''
-    
     def forwardprop(self, image):
         # pad the 4 edges of the image with the provided number of pixels
         if self.pad > 0:
@@ -269,7 +267,6 @@ class ActivationLayer:
             output = self.output.reshape(-1,1)
             dout_din = np.diagflat(output) - np.dot(output, output.transpose()) # derivative matrix of softmax function
             dL_din = np.dot(dout_din,dL_dout) # compute input loss deriv. by chain rule
-
         return dL_din
      
 class FlattenLayer:
@@ -286,7 +283,6 @@ class FlattenLayer:
     
     def backprop(self, dL_dout, learn_rate):
         return dL_dout.reshape(self.input_shape)
-        
         
 class DenseLayer: 
     def __init__(self, units_in, units_out, initial_Wvar=0.1):
