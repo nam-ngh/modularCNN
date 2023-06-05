@@ -136,7 +136,7 @@ class ConvolutionalLayer:
         
         # shape: (38,38,5,5,16). Since dL ONLY needs to be passed to the original UNPADDED image,
         # we slice out this matrix's edge to only include the middle region of shape (32,32,5,5,16),
-        # then flatten to (1444,400):
+        # then flatten to (1024,400):
         windowed_dL_dout = windowed_dL_dout[self.pad:-self.pad, 
                                             self.pad:-self.pad, 
                                             :,:,:]
