@@ -134,11 +134,17 @@ class ConvolutionalLayer:
                                                                   padded_dL_dout.strides[1],
                                                                   padded_dL_dout.strides[2]))
         
-        # windowed_dL_dout shape: (38,38,5,5,16), flattened to (1444,400)
+        # shape: (38,38,5,5,16). Since dL ONLY needs to be passed to the original UNPADDED image,
+        # we slice out this matrix's edge to only include the middle region of shape (32,32,5,5,16),
+        # then flatten to (1444,400):
+        windowed_dL_dout = windowed_dL_dout[self.pad:-self.pad, 
+                                            self.pad:-self.pad, 
+                                            :,:,:]
+        flat_dL_dout_windows = windowed_dL_dout.reshape(self.input_shape[0]**2, (self.filter_size**2)*self.filters)
+
         # flipped_filters shape (5,5,3,16), transposed to (5,5,16,3) and flattened to (400, 3): 
-        flat_dL_dout_windows = windowed_dL_dout.reshape(self.input.shape[0]**2, (self.filter_size**2)*self.filters)
         flat_filters = flipped_filters.transpose(0,1,3,2).reshape((self.filter_size**2)*self.filters,self.channels)
-        dL_din = np.dot(flat_dL_dout_windows,flat_filters).reshape(self.input.shape)[self.pad:-self.pad, self.pad:-self.pad, :]
+        dL_din = np.dot(flat_dL_dout_windows,flat_filters).reshape(self.input_shape)
 
         # finally, we update the filters and return dL_din:
         self.f -= dL_df * learn_rate
