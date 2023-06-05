@@ -1,0 +1,2 @@
+# myNN
+Under construction :)
