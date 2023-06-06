@@ -53,7 +53,7 @@ model.summary()
 model.train(x_train, y_train, epochs=30, learn_rate=0.00001, val_size=0.1)
 # split 10% of training data for validation
 ```
-
+A simple build example can be found [HERE](https://github.com/nam-ngh/notebooks/blob/89f31c0d5164759f1fa8fa939b45b476ba67ecc6/simpleCNN_cifar10.ipynb)
 ## Important Notes
 - The current model and layers are only compatible with square images: Input feature sets x_train, x_test must be provided in shape (n,x,x,c) where n = number of sample, x = height and width of the image, and c = number of channels (c=1 for b&w, c=3 for RGB)
 - input_shape must be specified for all layers upon adding to the network, in the form of (x,x,c), with the exception of Activation layer where this is not needed and Dense layer, where the number of neurons in and neurons out are required instead.
