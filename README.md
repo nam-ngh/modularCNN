@@ -59,7 +59,7 @@ model.train(x_train, y_train, epochs=30, learn_rate=0.00001, val_size=0.1)
 - input_shape must be specified for all layers upon adding to the network, in the form of (x,x,c), with the exception of Activation layer where this is not needed and Dense layer, where the number of neurons in and neurons out are required instead.
 - Ouput size of Convolutional and MaxPooling layer can be determined as follows: o = (x - filter_size + 2*pad)/stride + 1. Please make sure this is a whole number so that convolutions are complete and free of errors
 - It is recommmended that you determine the output shape of the previous layer first before adding the next, to make sure that the shapes don't mismatch. If you are unsure you can run the model summary function each time you add a layer to check the layers added so far
-- Currently for MaxPooling layer, pool_size and stride can only be set as the same number under pool_size, i.e. pooling regions can't overlap since backprop is very complicated to implement without for loops if the windows overlap
+- Currently for MaxPooling layer, pool_size and stride can only be set as the same number under pool_size, i.e. pooling regions can't overlap
 
 
 
