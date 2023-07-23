@@ -7,12 +7,6 @@ The main purpose of this project is to efficiently facilitate the construction a
 **Background:**<br>
 After building and training many CNN architectures using Keras's Sequential class, I wanted to deep dive into how neural networks actually work under the hood, and found that it was possible to build my own model with nothing but numpy and python. However, my initial attempts, similar to most other implementations from scratch, took advantage of heavily nested for loops to carry out convolution, which is how convolution works in theory, but is borderline useless in practice since it was way too slow. After further research, I came across numpy's as_strided function and tried implementing this in place of all the for loops in each layer, which also allowed for vectorised matrix multiplication operations. These techniques together improved performance by about 300x on just the Convolutional layer's forwardprop function alone. Then, the rest of the functions and layers were optimised with the same principles (even though back propagation was much more complicated to work with), and here we are, a functional and moderately efficient means to build and train CNNs from scratch!
 
-**Status:**<br>
-This project is under development. Expected features include:
-- Dropout layer
-- Batch normalization
-- Learn rate scheduling
-
 ## Instalation and Use Guide
 To work with this library in your local notebook, simply:
 1. Clone the repository,
