@@ -188,7 +188,7 @@ class MaxPooling:
         This layer's backprop function takes the loss gradient from the previous layer and assign it to the position
         of the max value in each window defined in forwardprop. Gradients of non-max values are 0.
         '''
-        # transform the input windowed view into a 2D array with 6x6x16 rows and 2x2 columns with the following steps:
+        # First, we transform the input windowed view into a 2D array with 6x6x16 rows and 2x2 columns with the following steps:
         # - flatten each window, so shape (6,6,2,2,16) become (6,6,4,16)
         # - tranpose the last 2 axes so shape become (6,6,16,4)
         # - flatten from (6,6,16,4) to (576,4)
