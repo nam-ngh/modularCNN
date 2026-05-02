@@ -5,14 +5,15 @@
 This project contains modular code to efficiently build and implement CNN models from scratch, WITHOUT the use of existing deep learning packages such as keras or pytorch. With this library, you can experiment building various neural network architectures for image classification, from a simple one-hidden-layer perceptron to a deep network of multiple Convolutional and Pooling layers, with the appropriate activation functions and weights initialisation strategies. Training performance is relatively efficient for python due to the use of fully vectorised numpy operations throughout all layers, though still a little behind established libraries such as keras.
 
 ## Instalation and Use Guide
-A simple build and train example notebook is provided with the CIFAR10 dataset. Otherwise, to work with this library on your local machine, simply:
-1. Clone the repository,
+A simple build and train script example.py is provided to work with the cifar-10 dataset, downloaded from [Kaggle](https://www.kaggle.com/datasets/pankrzysiu/cifar10-python) into data/. Otherwise, to work with this library on your local machine on any desired dataset, simply:
+
+1. From terminal, clone the repository,
 
 ```
-!git clone https://github.com/nam-ngh/modularCNN.git
+git clone https://github.com/nam-ngh/modularCNN.git
 ```
 
-2. Import modules:
+2. In the directory, create a new python script/notebook, import modules:
 
 ```
 from lib import layer, network
@@ -25,11 +26,10 @@ from lib import layer, network
 model = network.Net()
 ```
 
- - adding in layers:
+ - adding in layers e.g.: a Convolutional layer with 16 3x3 filters, stride of 1 and padding of 1 pixel
 
 ```
 model.add(layer.Convolutional(input_shape=(32,32,3),filters=16,filter_size=3,stride=1,pad=1))
-# e.g.: a Convolutional layer with 16 3x3 filters, stride of 1 and padding of 1 pixel
 ```
 
  - get a summary of the architecture:
@@ -42,7 +42,6 @@ model.summary()
 
 ```
 model.train(x_train, y_train, epochs=30, learn_rate=0.00001, val_size=0.1)
-# split 10% of training data for validation
 ```
 
 ## Important Notes
