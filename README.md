@@ -10,7 +10,7 @@ A simple build and train script example.py is provided to work with the cifar-10
 1. From terminal, clone the repository,
 
 ```
-git clone https://github.com/nam-ngh/modularCNN.git
+git clone https://github.com/nam-ngh/modular-CNN.git
 ```
 
 2. In the directory, create a new python script/notebook, import modules:
